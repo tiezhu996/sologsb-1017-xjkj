@@ -73,8 +73,15 @@ mark { padding: 0 .1em; color: #3a2414; background: #f1d486; border-radius: 2px;
 .version-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; }
 .version-list, .diff-panel { padding: 18px; border: 1px solid #d8d0c4 !important; border-radius: 13px !important; }
 .version-list .MuiListItemButton-root { margin-top: 4px; border-radius: 8px; }
+.version-list-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .diff-list { display: grid; gap: 8px; margin-top: 16px; }
-.diff-row { display: grid; grid-template-columns: 84px 95px minmax(100px, 1fr) 20px minmax(100px, 1fr); gap: 9px; align-items: center; padding: 10px; border: 1px solid #e1d9cd; border-radius: 8px; background: #faf7f0; font-size: 13px; }
+.diff-section { margin-top: 18px; }
+.diff-section:first-child { margin-top: 4px; }
+.diff-section-head { margin-bottom: 10px; }
+.diff-group { display: grid; gap: 8px; margin-bottom: 14px; }
+.diff-group-title { color: #7b4b2a; font-size: 13px; font-weight: 750; }
+.diff-row { display: grid; grid-template-columns: minmax(110px, auto) 62px minmax(96px, .9fr) minmax(70px, 1fr) 20px minmax(70px, 1fr); gap: 9px; align-items: center; padding: 10px; border: 1px solid #e1d9cd; border-radius: 8px; background: #faf7f0; font-size: 13px; }
+.diff-row .MuiChip-root { white-space: nowrap; }
 .diff-before { color: #98463e; text-decoration: line-through; }
 .diff-arrow { color: #91877c; text-align: center; }
 .diff-after { color: #2f6f67; font-weight: 650; }

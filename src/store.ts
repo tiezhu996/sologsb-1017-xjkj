@@ -100,7 +100,7 @@ export function deriveWarnings(script: Script): WarningItem[] {
 }
 
 export function diffScript(base: Script, current: Script): DiffItem[] {
-  const fields: Array<{ key: keyof Scene; label: string }> = [
+  const sceneFields: Array<{ key: keyof Scene; label: string }> = [
     { key: 'slug', label: '场名' },
     { key: 'synopsis', label: '摘要' },
     { key: 'intExt', label: '内外景' },
@@ -115,23 +115,164 @@ export function diffScript(base: Script, current: Script): DiffItem[] {
   const result: DiffItem[] = []
   const sceneKey = (scene: Scene) => `${scene.number}|${scene.slug}`
   const baseByKey = new Map(base.scenes.map((scene) => [sceneKey(scene), scene]))
+
+  const characterName = (characterId: string) =>
+    current.characters.find((item) => item.id === characterId)?.name ??
+    base.characters.find((item) => item.id === characterId)?.name ?? '未知角色'
+  const propName = (propId: string) =>
+    current.props.find((item) => item.id === propId)?.name ??
+    base.props.find((item) => item.id === propId)?.name ?? '未知道具'
+  const wardrobeName = (wardrobeId: string) =>
+    current.wardrobes.find((item) => item.id === wardrobeId)?.name ??
+    base.wardrobes.find((item) => item.id === wardrobeId)?.name ?? '未知服装'
+  const sceneNumberById = (sceneId: string) =>
+    current.scenes.find((scene) => scene.id === sceneId)?.number ??
+    base.scenes.find((scene) => scene.id === sceneId)?.number ?? '?'
+
+  // —— 场次（含出场角色、出场道具、每场服装的关系）——
   current.scenes.forEach((scene) => {
     const previous = baseByKey.get(sceneKey(scene)) ?? base.scenes.find((item) => item.id === scene.id)
     if (!previous) {
-      result.push({ id: `new-${scene.id}`, sceneNumber: scene.number, field: '场次', before: '不存在', after: `${scene.intExt}. ${scene.location} — ${scene.dayNight}` })
+      result.push({
+        id: `scene-new-${scene.id}`, section: 'scene', kind: 'add', category: '场次',
+        sceneNumber: scene.number, target: scene.slug, field: '场次',
+        before: '不存在', after: `${scene.intExt}. ${scene.location} — ${scene.dayNight}`
+      })
       return
     }
-    fields.forEach(({ key, label }) => {
+    const pushScene = (kind: DiffItem['kind'], field: string, before: string, after: string, suffix: string) =>
+      result.push({
+        id: `scene-${scene.id}-${suffix}`, section: 'scene', kind, category: '场次',
+        sceneNumber: scene.number, target: scene.slug, field, before, after
+      })
+
+    sceneFields.forEach(({ key, label }) => {
       const before = String(previous[key] ?? '')
       const after = String(scene[key] ?? '')
-      if (before !== after) result.push({ id: `${scene.id}-${String(key)}`, sceneNumber: scene.number, field: label, before, after })
+      if (before !== after) pushScene('change', label, before, after, `field-${String(key)}`)
+    })
+
+    scene.characterIds.filter((characterId) => !previous.characterIds.includes(characterId)).forEach((characterId) => {
+      pushScene('add', '出场角色', '', characterName(characterId), `char-add-${characterId}`)
+    })
+    previous.characterIds.filter((characterId) => !scene.characterIds.includes(characterId)).forEach((characterId) => {
+      pushScene('remove', '出场角色', characterName(characterId), '', `char-remove-${characterId}`)
+    })
+
+    scene.propIds.filter((propId) => !previous.propIds.includes(propId)).forEach((propId) => {
+      pushScene('add', '出场道具', '', propName(propId), `prop-add-${propId}`)
+    })
+    previous.propIds.filter((propId) => !scene.propIds.includes(propId)).forEach((propId) => {
+      pushScene('remove', '出场道具', propName(propId), '', `prop-remove-${propId}`)
+    })
+
+    const costumeCharacterIds = new Set([...Object.keys(previous.costumes), ...Object.keys(scene.costumes)])
+    costumeCharacterIds.forEach((characterId) => {
+      const beforeId = previous.costumes[characterId] ?? ''
+      const afterId = scene.costumes[characterId] ?? ''
+      if (beforeId === afterId) return
+      const kind: DiffItem['kind'] = !beforeId ? 'add' : !afterId ? 'remove' : 'change'
+      pushScene(kind, `${characterName(characterId)}的服装`, beforeId ? wardrobeName(beforeId) : '', afterId ? wardrobeName(afterId) : '', `costume-${characterId}`)
     })
   })
+
   base.scenes.forEach((scene) => {
     if (!current.scenes.some((item) => item.id === scene.id || sceneKey(item) === sceneKey(scene))) {
-      result.push({ id: `deleted-${scene.id}`, sceneNumber: scene.number, field: '场次', before: `${scene.intExt}. ${scene.location} — ${scene.dayNight}`, after: '已删除' })
+      result.push({
+        id: `scene-deleted-${scene.id}`, section: 'scene', kind: 'remove', category: '场次',
+        sceneNumber: scene.number, target: scene.slug, field: '场次',
+        before: `${scene.intExt}. ${scene.location} — ${scene.dayNight}`, after: '已删除'
+      })
     }
   })
+
+  // —— 资料库（角色、道具、服装的增删改）——
+  interface FieldDef<T> {
+    key: keyof T & string
+    label: string
+    format?: (value: unknown) => string
+  }
+
+  const diffLibraryCollection = <T extends { id: string }>(
+    category: string,
+    baseItems: T[],
+    currentItems: T[],
+    summary: (item: T) => string,
+    fields: FieldDef<T>[]
+  ) => {
+    const baseById = new Map(baseItems.map((item) => [item.id, item]))
+    const formatField = (item: T, field: FieldDef<T>) => {
+      const value = item[field.key]
+      return field.format ? field.format(value) : String(value ?? '')
+    }
+    currentItems.forEach((item) => {
+      const previous = baseById.get(item.id)
+      if (!previous) {
+        result.push({
+          id: `lib-${category}-add-${item.id}`, section: 'library', kind: 'add', category,
+          sceneNumber: '', target: summary(item), field: category, before: '', after: '已新增'
+        })
+        return
+      }
+      fields.forEach((field) => {
+        const before = formatField(previous, field)
+        const after = formatField(item, field)
+        if (before !== after) {
+          result.push({
+            id: `lib-${category}-${item.id}-${field.key}`, section: 'library', kind: 'change', category,
+            sceneNumber: '', target: summary(item), field: field.label, before, after
+          })
+        }
+      })
+    })
+    currentItems.forEach((item) => baseById.delete(item.id))
+    baseById.forEach((item) => {
+      result.push({
+        id: `lib-${category}-remove-${item.id}`, section: 'library', kind: 'remove', category,
+        sceneNumber: '', target: summary(item), field: category, before: '已删除', after: ''
+      })
+    })
+  }
+
+  diffLibraryCollection(
+    '角色',
+    base.characters,
+    current.characters,
+    (character) => character.name,
+    [
+      { key: 'name', label: '姓名' },
+      { key: 'actor', label: '演员' },
+      { key: 'introducedSceneId', label: '首次建立场景', format: (value) => `场景 ${sceneNumberById(String(value))}` },
+      { key: 'note', label: '备注' }
+    ]
+  )
+
+  diffLibraryCollection(
+    '道具',
+    base.props,
+    current.props,
+    (prop) => prop.name,
+    [
+      { key: 'name', label: '道具名' },
+      { key: 'introducedSceneId', label: '首次建立场景', format: (value) => `场景 ${sceneNumberById(String(value))}` },
+      { key: 'ownerId', label: '持有人', format: (value) => (value ? characterName(String(value)) : '') },
+      { key: 'note', label: '备注' }
+    ]
+  )
+
+  diffLibraryCollection(
+    '服装',
+    base.wardrobes,
+    current.wardrobes,
+    (wardrobe) => wardrobe.name,
+    [
+      { key: 'name', label: '服装名' },
+      { key: 'characterId', label: '所属角色', format: (value) => characterName(String(value)) },
+      { key: 'timePeriods', label: '适用时段', format: (value) => (Array.isArray(value) ? value.join('、') : String(value ?? '')) },
+      { key: 'note', label: '备注' }
+    ]
+  )
+
   return result
 }
 
