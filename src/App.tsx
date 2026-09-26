@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   AppBar,
@@ -46,7 +46,7 @@ import {
   WarningAmber
 } from '@mui/icons-material'
 import { diffScript, useContinuityStore } from './store'
-import type { RevisionColor, Scene, WarningItem, WarningStatus } from './types'
+import type { DiffItem, DiffKind, RevisionColor, Scene, WarningItem, WarningStatus } from './types'
 
 const revisionOptions: Array<{ value: RevisionColor; label: string; color: string }> = [
   { value: 'white', label: '白纸', color: '#f7f5ee' },
@@ -102,6 +102,26 @@ function SceneCard({ scene, query, active, onOpen }: { scene: Scene; query: stri
   )
 }
 
+const diffKindMeta: Record<DiffKind, { label: string; color: 'success' | 'error' | 'warning' }> = {
+  added: { label: '新增', color: 'success' },
+  removed: { label: '去掉', color: 'error' },
+  changed: { label: '改动', color: 'warning' }
+}
+
+function DiffRow({ item }: { item: DiffItem }) {
+  const kind = diffKindMeta[item.kind]
+  return (
+    <Box className={`diff-row${item.section === 'library' ? ' library' : ''}`}>
+      <Chip size="small" color={kind.color} label={kind.label} />
+      {item.section === 'library' && <Chip size="small" variant="outlined" label={item.target} />}
+      <strong>{item.field}</strong>
+      <span className="diff-before">{item.before || '空'}</span>
+      <span className="diff-arrow">→</span>
+      <span className="diff-after">{item.after || '空'}</span>
+    </Box>
+  )
+}
+
 export default function App() {
   const store = useContinuityStore()
   const { state, warnings } = store
@@ -123,6 +143,7 @@ export default function App() {
   const visibleWarnings = warnings.filter((warning) => warningFilter === 'all' || (state.reviews[warning.id]?.status ?? 'pending') === warningFilter)
   const selectedVersion = state.versions.find((version) => version.id === selectedVersionId) ?? state.versions[0]
   const diff = useMemo(() => selectedVersion ? diffScript(selectedVersion.script, state.script) : [], [selectedVersion, state.script])
+  const diffCounts = useMemo(() => new Map(state.versions.map((version) => [version.id, diffScript(version.script, state.script).length])), [state.versions, state.script])
   const searchResults = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return []
@@ -412,13 +433,21 @@ export default function App() {
   }
 
   function renderVersions() {
+    const sceneDiffs = diff.filter((item) => item.section === 'scene')
+    const libraryDiffs = diff.filter((item) => item.section === 'library')
+    const sceneGroups: Array<{ sceneNumber: string; items: DiffItem[] }> = []
+    sceneDiffs.forEach((item) => {
+      const group = sceneGroups[sceneGroups.length - 1]
+      if (group && group.sceneNumber === item.sceneNumber) group.items.push(item)
+      else sceneGroups.push({ sceneNumber: item.sceneNumber, items: [item] })
+    })
     return (
       <Box>
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={2} mb={2}>
           <Box>
             <Typography className="eyebrow">VERSION CONTROL</Typography>
             <Typography variant="h4">版本差异</Typography>
-            <Typography color="text.secondary">冻结当前剧本，或把历史版本与当前工作稿逐字段比较。</Typography>
+            <Typography color="text.secondary">冻结当前剧本，或把历史版本与当前工作稿逐字段比较（含出场关系与资料库）。</Typography>
           </Box>
           <Button variant="contained" startIcon={<Save />} onClick={() => setVersionDialog(true)}>保存版本</Button>
         </Stack>
@@ -426,14 +455,18 @@ export default function App() {
           <Paper className="version-list" elevation={0}>
             <Typography variant="h6">历史版本</Typography>
             <List disablePadding>
-              {state.versions.map((version) => (
-                <ListItemButton key={version.id} selected={version.id === selectedVersion?.id} onClick={() => setSelectedVersionId(version.id)}>
-                  <Box>
-                    <Typography fontWeight={700}>{version.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{new Date(version.createdAt).toLocaleString('zh-CN')}</Typography>
-                  </Box>
-                </ListItemButton>
-              ))}
+              {state.versions.map((version) => {
+                const count = diffCounts.get(version.id) ?? 0
+                return (
+                  <ListItemButton key={version.id} selected={version.id === selectedVersion?.id} onClick={() => setSelectedVersionId(version.id)} sx={{ alignItems: 'flex-start', gap: 1 }}>
+                    <Box flex={1} minWidth={0}>
+                      <Typography fontWeight={700}>{version.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{new Date(version.createdAt).toLocaleString('zh-CN')}</Typography>
+                    </Box>
+                    <Chip size="small" label={`${count} 处差异`} color={count ? 'warning' : 'default'} variant={count ? 'filled' : 'outlined'} />
+                  </ListItemButton>
+                )
+              })}
             </List>
             {!state.versions.length && <Typography color="text.secondary" mt={2}>尚无历史版本。</Typography>}
           </Paper>
@@ -441,21 +474,21 @@ export default function App() {
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
                 <Typography variant="h6">{selectedVersion ? `${selectedVersion.name} → 当前工作稿` : '等待选择版本'}</Typography>
-                <Typography variant="body2" color="text.secondary">{diff.length} 处字段差异</Typography>
+                <Typography variant="body2" color="text.secondary">{diff.length} 处差异（场次 {sceneDiffs.length} · 资料库 {libraryDiffs.length}）</Typography>
               </Box>
               {selectedVersion && <Button onClick={() => store.restoreVersion(selectedVersion.id)}>恢复此版本</Button>}
             </Stack>
             <Divider />
             <Box className="diff-list">
-              {diff.map((item) => (
-                <Box key={item.id} className="diff-row">
-                  <Chip size="small" label={`场景 ${item.sceneNumber}`} />
-                  <strong>{item.field}</strong>
-                  <span className="diff-before">{item.before || '空'}</span>
-                  <span className="diff-arrow">→</span>
-                  <span className="diff-after">{item.after || '空'}</span>
-                </Box>
+              {sceneGroups.length > 0 && <Typography className="diff-section-title">场次差异 · {sceneDiffs.length} 处</Typography>}
+              {sceneGroups.map((group) => (
+                <Fragment key={group.sceneNumber}>
+                  <Typography className="diff-group-title">场景 {group.sceneNumber}</Typography>
+                  {group.items.map((item) => <DiffRow key={item.id} item={item} />)}
+                </Fragment>
               ))}
+              {libraryDiffs.length > 0 && <Typography className="diff-section-title">资料库差异 · {libraryDiffs.length} 处</Typography>}
+              {libraryDiffs.map((item) => <DiffRow key={item.id} item={item} />)}
               {selectedVersion && !diff.length && <Alert severity="success">当前工作稿与该版本一致。</Alert>}
             </Box>
           </Paper>

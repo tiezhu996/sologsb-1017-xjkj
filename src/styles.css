@@ -73,8 +73,11 @@ mark { padding: 0 .1em; color: #3a2414; background: #f1d486; border-radius: 2px;
 .version-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; }
 .version-list, .diff-panel { padding: 18px; border: 1px solid #d8d0c4 !important; border-radius: 13px !important; }
 .version-list .MuiListItemButton-root { margin-top: 4px; border-radius: 8px; }
-.diff-list { display: grid; gap: 8px; margin-top: 16px; }
-.diff-row { display: grid; grid-template-columns: 84px 95px minmax(100px, 1fr) 20px minmax(100px, 1fr); gap: 9px; align-items: center; padding: 10px; border: 1px solid #e1d9cd; border-radius: 8px; background: #faf7f0; font-size: 13px; }
+.diff-list { display: grid; gap: 8px; margin-top: 16px; align-content: start; }
+.diff-section-title { margin-top: 8px; color: #765033; font-size: 13px; font-weight: 800; letter-spacing: .08em; }
+.diff-group-title { color: #9a7d62; font-size: 12px; font-weight: 750; }
+.diff-row { display: grid; grid-template-columns: 64px 110px minmax(100px, 1fr) 20px minmax(100px, 1fr); gap: 9px; align-items: center; padding: 10px; border: 1px solid #e1d9cd; border-radius: 8px; background: #faf7f0; font-size: 13px; }
+.diff-row.library { grid-template-columns: 64px 130px 110px minmax(90px, 1fr) 20px minmax(90px, 1fr); }
 .diff-before { color: #98463e; text-decoration: line-through; }
 .diff-arrow { color: #91877c; text-align: center; }
 .diff-after { color: #2f6f67; font-weight: 650; }
@@ -110,7 +113,7 @@ kbd { padding: 5px 8px; color: #fdf9f1; border-radius: 5px; background: #44382e;
   .warning-panel-head { display: block; }
   .warning-icon { margin-bottom: 10px; }
   .reply-item { grid-template-columns: 1fr; gap: 3px; }
-  .diff-row { grid-template-columns: 1fr; }
+  .diff-row, .diff-row.library { grid-template-columns: 1fr; }
   .diff-arrow { transform: rotate(90deg); }
   .timeline-card { grid-template-columns: 1fr; }
 }

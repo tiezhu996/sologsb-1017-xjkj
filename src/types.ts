@@ -90,9 +90,15 @@ export interface ContinuityState {
   updatedAt: string
 }
 
+export type DiffKind = 'added' | 'removed' | 'changed'
+export type DiffSection = 'scene' | 'library'
+
 export interface DiffItem {
   id: string
+  section: DiffSection
+  kind: DiffKind
   sceneNumber: string
+  target: string
   field: string
   before: string
   after: string
